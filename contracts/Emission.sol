@@ -71,8 +71,6 @@ contract Emission is Ownable {
     require(!bonusEmitted[stage][msg.sender]);
 
     uint[4] indicators = stageIndicators[stage];
-    /*uint256 users = uint256(indicators[0]);*/
-    /*uint256 stores = uint256(indicators[1]);*/
     uint256 users = indicators[0];
     uint256 stores = indicators[1];
     uint256 stageTokens = indicators[2];

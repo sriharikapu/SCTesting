@@ -1,6 +1,6 @@
 pragma solidity ^0.4.4;
 
-import "./StoricaCoin.sol";
+import "./StoriqaCoin.sol";
 import "zeppelin-solidity/contracts/ownership/Ownable.sol";
 
 contract ICO is Ownable {
@@ -10,19 +10,23 @@ contract ICO is Ownable {
   uint public start;
 
   event StartICO();
-  event FinishICO(uint teamTokens, uint totalTokens);
+  event FinishICO(uint256 teamTokens, uint256 totalTokens);
 
-  StoricaCoin public stq;
+  StoriqaCoin public stq;
 
   // ICO state
   enum IcoState { Init, Running, Finished }
-  IcoState icoState = IcoState.Init;
+  IcoState public icoState = IcoState.Init;
 
   function ICO() {
-    stq = new STQ(this);
-    emission = new Emission(stq);
+    stq = new StoriqaCoin(this);
+    /*emission = new Emission(stq);*/
     // 18/09/2017
     start = 1505692800;
+  }
+
+  function isFinished() public returns (bool) {
+    return icoState == IcoState.Finished;
   }
 
   // fallback function: by default buy stq tokens
@@ -30,28 +34,39 @@ contract ICO is Ownable {
     buyFor(msg.sender);
   }
 
-  function buyFor(address _to) public payable {
+  // buy tokens
+  // check ICO state is Running
+  // check is ether is present
+  // calculate stq tokens
+  // check to overflow
+  // by tokens
+  function buyFor(address to) public payable {
     require(icoState == IcoState.Running);
-    require(msg.value > 0); // проверить на переполнение и может быт есть гуард где то уже
+    require(msg.value > 0);
 
-    buy(_to, msg.value * TOKEN_PRICE);
+    uint256 totalTokens = msg.value * TOKEN_PRICE;
+
+    require((stq.balanceOf(to) + totalTokens) >= stq.balanceOf(to));
+
+    buy(to, totalTokens);
   }
 
-  function buy(address _to, uint _stqValue) internal {
-    uint _total = produceBonus(_stqValue);
+  // internal function to buy token
+  // calculate bonus
+  function buy(address to, uint256 stqValue) internal {
+    uint256 total = produceBonus(stqValue);
 
-    // переписать метод - сделать проверку что прислали эфир
-    // и ico еще не закончено и можно майнить - MintableToken
-    stq.mint(_to, _total);
+    stq.mint(to, total);
   }
 
-  function produceBonus(uint _value) {
+  // produce bonus
+  function produceBonus(uint value) returns (uint) {
     uint multiplier = getICOMultiplier();
 
-    return uint(_value * multiplier) / 100;
+    return uint(value * multiplier) / 100;
   }
 
-  // здесь смотрим на дату и в зависимости от нее возвращаем мультипликатор
+  // produce ICO multiplier for bonus calculation
   function getICOMultiplier() returns (uint) {
     uint multiplier = 100;
 
@@ -74,45 +89,29 @@ contract ICO is Ownable {
     return multiplier;
   }
 
+  // starting ICO
   function startIco() external onlyOwner {
     require(icoState == IcoState.Init);
     icoState = IcoState.Running;
     StartICO();
   }
 
+  // finishing ICO
+  // calculate owner tokens (as part of 80% of all emitted tokens)
+  // send this tokens to owner
+  // set ICO state to finished
   function finishIco() external onlyOwner {
     require(icoState == IcoState.Running);
 
-    // здесь нужно мультиплицировать токены
-    // создать токены команды - 80%
-    // и начислить овнеру
-    // потом получить общее количество токенов
-    // вызвать событие и вернуть общее количестов токенов и токены команды
+    /*uint256 mintedTokens = stq.totalSupply();*/
+    /*uint256 teamTokens = mintedTokens * 4;*/
 
-    uint256 teamTokens = stq.totalSupply * 4; // это 80% команды
+    uint256 teamTokens = stq.totalSupply() * 4;
     buy(msg.sender, teamTokens);
-    uint256 totalMintedTokens = stq.totalSupply;
+
+    uint256 totalMintedTokens = stq.totalSupply();
 
     icoState = IcoState.Finished;
-    FinishIco(teamTokens, totalMintedTokens);
+    FinishICO(teamTokens, totalMintedTokens);
   }
-
-  /*// Mint few tokens and transefer them to some address.
-  function mint(address _holder, uint _value) external {
-    require(msg.sender == ico);
-    require(_value != 0);
-    require(totalSupply + _value <= TOKEN_LIMIT);
-
-    balances[_holder] += _value;
-    totalSupply += _value;
-    Transfer(0x0, _holder, _value);
-  }
-
-  // эта функция в токене
-  function mint(address _to, uint256 _amount) onlyOwner canMint returns (bool) {
-    totalSupply = totalSupply.add(_amount);
-    balances[_to] = balances[_to].add(_amount);
-    Mint(_to, _amount);
-    return true;
-  }*/
 }

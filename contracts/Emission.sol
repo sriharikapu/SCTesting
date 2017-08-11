@@ -1,30 +1,34 @@
 pragma solidity ^0.4.4;
 
-import "./StoricaCoin.sol";
+import "./StoriqaCoin.sol";
+import "./ICO.sol";
 
 contract Emission is Ownable {
   // stage => address => is bunus emitted
   mapping (uint => mapping (address => bool)) bonusEmitted;
   // stage => users / stores / total amout of tokens on stage / bonus tokens
-  mapping (uint => uint[4]) stageIndicators;
+  mapping (uint => uint256[4]) stageIndicators;
   // current stage
   uint emissionStage;
 
-  event UpdateICOStage(uint stage, uint, users, uint stores, uint256 total, uint256 bonus);
+  event UpdateICOStage(uint stage, uint users, uint stores, uint256 total, uint256 bonus);
   event FetchBonus(address user, uint256 quantity);
 
-  StoricaCoin public stq;
+  StoriqaCoin public stq;
   ICO public ico;
 
   function Emission(address _stq, address _ico) {
-    stq = _stq;
-    ico = _ico;
+    stq = StoriqaCoin(_stq);
+    ico = ICO(_ico);
     emissionStage = 0;
   }
 
   // check is ico finished
   modifier ICOFinished() {
-    require(ico.icoState == ico.IcoState.Finished);
+    ico.isFinished();
+    require(ico.isFinished());
+    /*ico.IcoState;*/
+    /*require(ico.icoState == ico.IcoState.Finished);*/
     _;
   }
 
@@ -50,9 +54,9 @@ contract Emission is Ownable {
   function updateICOStage(uint users, uint stores) external onlyOwner ICOFinished returns (bool) {
     emissionStage = emissionStage + 1;
     uint256 stageBonusTokens = users + stores * 100;
-    stageIndicators[emissionStage] = [users, stores, stq.totalSupply, stageBonusTokens];
+    stageIndicators[emissionStage] = [users, stores, stq.totalSupply(), stageBonusTokens];
 
-    UpdateICOStage(emissionStage, users, stores, stq.totalSupply, stageBonusTokens);
+    UpdateICOStage(emissionStage, users, stores, stq.totalSupply(), stageBonusTokens);
 
     return true;
   }
@@ -62,22 +66,24 @@ contract Emission is Ownable {
   // callee is token owner and bonus doesn't already produced for user
   // calculate bonus for user and mint it
   // set emitted flag for user, that prevent multiply bonus producing
-  function fetchBonus(uint stage) external emissionInProcess ICOFinished STQOwner returns (uint) {
+  function fetchBonus(uint stage) external emissionInProcess ICOFinished STQOwner returns (bool) {
     require(stage <= emissionStage);
     require(!bonusEmitted[stage][msg.sender]);
 
-    uint[3] indicators = stageIndicators[stage];
-    uint256 users = uint256(indicators[0]);
-    uint256 stores = uint256(indicators[1]);
+    uint[4] indicators = stageIndicators[stage];
+    /*uint256 users = uint256(indicators[0]);*/
+    /*uint256 stores = uint256(indicators[1]);*/
+    uint256 users = indicators[0];
+    uint256 stores = indicators[1];
     uint256 stageTokens = indicators[2];
     uint256 bonusTokens = indicators[3];
     uint256 userTokens = stq.balanceOf(msg.sender);
 
-    uint256 bonusTokens = (uint256(users + stores * 100) * userTokens) / stageTokens;
+    uint256 userBonusTokens = (uint256(users + stores * 100) * userTokens) / stageTokens;
 
-    stq.mint(msg.sender, bonusTokens);
+    stq.mint(msg.sender, userBonusTokens);
 
-    FetchBonus(msg.sender, bonusTokens);
+    FetchBonus(msg.sender, userBonusTokens);
 
     bonusEmitted[stage][msg.sender] = true;
     return true;

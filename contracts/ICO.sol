@@ -18,9 +18,8 @@ contract ICO is Ownable {
   enum IcoState { Init, Running, Finished }
   IcoState public icoState = IcoState.Init;
 
-  function ICO() {
-    stq = new StoriqaCoin(this);
-    /*emission = new Emission(stq);*/
+  function ICO(address _stq) {
+    stq = StoriqaCoin(_stq);
     // 18/09/2017
     start = 1505692800;
   }
@@ -60,10 +59,10 @@ contract ICO is Ownable {
   }
 
   // produce bonus
-  function produceBonus(uint value) returns (uint) {
+  function produceBonus(uint256 value) returns (uint) {
     uint multiplier = getICOMultiplier();
 
-    return uint(value * multiplier) / 100;
+    return uint256(value * multiplier) / 100;
   }
 
   // produce ICO multiplier for bonus calculation

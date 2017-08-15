@@ -1,14 +1,14 @@
 var StoriqaCoin = artifacts.require("./StoriqaCoin.sol");
+var ICO = artifacts.require("./ICO.sol");
+var EmissionCoin = artifacts.require("./Emission.sol");
 
 module.exports = function(deployer) {
-  deployer.deploy(StoriqaCoin);
-}
+  res_stq = deployer.deploy(StoriqaCoin);
+  res_stq.then(StoriqaCoin.deployed).then(function(stq) {
+    res_ico = deployer.deploy(ICO, stq.address);
 
-// var ConvertLib = artifacts.require("./ConvertLib.sol");
-// var MetaCoin = artifacts.require("./MetaCoin.sol");
-//
-// module.exports = function(deployer) {
-//   deployer.deploy(ConvertLib);
-//   deployer.link(ConvertLib, MetaCoin);
-//   deployer.deploy(MetaCoin);
-// };
+    res_ico.then(ICO.deployed).then(function(ico) {
+      res_em = deployer.deploy(EmissionCoin, stq.address, ico.address);
+    });
+  })
+}

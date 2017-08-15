@@ -25,10 +25,8 @@ contract Emission is Ownable {
 
   // check is ico finished
   modifier ICOFinished() {
-    ico.isFinished();
+    /*ico.isFinished();*/
     require(ico.isFinished());
-    /*ico.IcoState;*/
-    /*require(ico.icoState == ico.IcoState.Finished);*/
     _;
   }
 
@@ -55,6 +53,7 @@ contract Emission is Ownable {
     emissionStage = emissionStage + 1;
     uint256 stageBonusTokens = users + stores * 100;
     stageIndicators[emissionStage] = [users, stores, stq.totalSupply(), stageBonusTokens];
+    // сделать проверку на частотночть вызовов - по времени
 
     UpdateICOStage(emissionStage, users, stores, stq.totalSupply(), stageBonusTokens);
 
@@ -66,6 +65,13 @@ contract Emission is Ownable {
   // callee is token owner and bonus doesn't already produced for user
   // calculate bonus for user and mint it
   // set emitted flag for user, that prevent multiply bonus producing
+  //
+  //
+  // здесь уязвимость - люди могут запрашивать бонус, потом переводить токены на новый адрес и снова запрашивать бонус
+  // ??? сделать сразу предварительный расчет бонусов и хранить их до востребования
+  //
+  // запретить продажу токенов если сейчас происходит начисление бонусов?
+  //
   function fetchBonus(uint stage) external emissionInProcess ICOFinished STQOwner returns (bool) {
     require(stage <= emissionStage);
     require(!bonusEmitted[stage][msg.sender]);
@@ -80,10 +86,10 @@ contract Emission is Ownable {
     uint256 userBonusTokens = (uint256(users + stores * 100) * userTokens) / stageTokens;
 
     stq.mint(msg.sender, userBonusTokens);
+    bonusEmitted[stage][msg.sender] = true;
 
     FetchBonus(msg.sender, userBonusTokens);
 
-    bonusEmitted[stage][msg.sender] = true;
     return true;
   }
 }

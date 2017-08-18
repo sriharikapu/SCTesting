@@ -3,6 +3,8 @@ pragma solidity ^0.4.4;
 import "./StoriqaCoin.sol";
 import "./ICO.sol";
 
+// TODO сделать bonusEmitted частью токена?
+
 contract Emission is Ownable {
   // stage => address => is bunus emitted
   mapping (uint => mapping (address => bool)) bonusEmitted;

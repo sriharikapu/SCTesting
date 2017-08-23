@@ -3,10 +3,8 @@ pragma solidity ^0.4.4;
 import "./StoriqaCoin.sol";
 import "./ICO.sol";
 
-// TODO сделать bonusEmitted частью токена?
-
 contract Emission is Ownable {
-  // stage => address => is bunus emitted
+  // stage => address => is bonus emitted
   mapping (uint => mapping (address => bool)) bonusEmitted;
   // stage => users / stores / total amout of tokens on stage / bonus tokens
   mapping (uint => uint256[4]) stageIndicators;
@@ -32,7 +30,7 @@ contract Emission is Ownable {
     _;
   }
 
-  // check callee has stq tokens
+  // check caller has stq tokens
   modifier STQOwner() {
     require(stq.balanceOf(msg.sender) > 0);
     _;
@@ -47,7 +45,7 @@ contract Emission is Ownable {
   // migrate to new emission stage
   // must be called only by owner and when ICO was finished
   // increment current stage
-  // calculate available bonus on thes stage
+  // calculate available bonus on this stage
   // save parameters:
   // stage => user quantity, stores quantity, total tokens on stage finish, available bonus
   // return true if success
@@ -55,7 +53,6 @@ contract Emission is Ownable {
     emissionStage = emissionStage + 1;
     uint256 stageBonusTokens = users + stores * 100;
     stageIndicators[emissionStage] = [users, stores, stq.totalSupply(), stageBonusTokens];
-    // сделать проверку на частотночть вызовов - по времени
 
     UpdateICOStage(emissionStage, users, stores, stq.totalSupply(), stageBonusTokens);
 

@@ -13,7 +13,8 @@ import './multiowned.sol';
  */
 contract MultiownedControlled is multiowned {
 
-    event ControllerSet(address indexed controller);
+    event ControllerSet(address controller);
+    event ControllerRetired(address was);
 
 
     modifier onlyController {
@@ -31,10 +32,17 @@ contract MultiownedControlled is multiowned {
         ControllerSet(m_controller);
     }
 
-    /// @notice sets the controller
+    /// @dev sets the controller
     function setController(address _controller) external onlymanyowners(sha3(msg.data)) {
         m_controller = _controller;
         ControllerSet(m_controller);
+    }
+
+    /// @dev ability for controller to step down
+    function detachController() external onlyController {
+        address was = m_controller;
+        m_controller = address(0);
+        ControllerRetired(was);
     }
 
 

@@ -1,4 +1,4 @@
-pragma solidity ^0.4.0;
+pragma solidity 0.4.15;
 
 import '../ownership/MultiownedControlled.sol';
 import 'zeppelin-solidity/contracts/math/SafeMath.sol';
@@ -18,7 +18,7 @@ contract FundsRegistry is MultiownedControlled, ReentrancyGuard {
         SUCCEEDED
     }
 
-    event StateChanged(State indexed _state);
+    event StateChanged(State _state);
     event Invested(address indexed investor, uint256 amount);
     event EtherSent(address indexed to, uint value);
     event RefundSent(address indexed to, uint value);
@@ -73,7 +73,9 @@ contract FundsRegistry is MultiownedControlled, ReentrancyGuard {
         Invested(_investor, amount);
     }
 
-    /// @dev Send `value` of ether to address `to`
+    /// @notice owners: send `value` of ether to address `to`, can be called if crowdsale succeeded
+    /// @param to where to send ether
+    /// @param value amount of wei to send
     function sendEther(address to, uint value)
         external
         onlymanyowners(sha3(msg.data))
@@ -85,11 +87,11 @@ contract FundsRegistry is MultiownedControlled, ReentrancyGuard {
         EtherSent(to, value);
     }
 
-    /// @notice withdraw accumulated balance, called by payee.
+    /// @notice withdraw accumulated balance, called by payee in case crowdsale failed
     function withdrawPayments()
         external
-        requiresState(State.REFUNDING)
         nonReentrant
+        requiresState(State.REFUNDING)
     {
         address payee = msg.sender;
         uint256 payment = m_weiBalances[payee];

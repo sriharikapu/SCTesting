@@ -10,7 +10,6 @@ import 'zeppelin-solidity/contracts/math/SafeMath.sol';
 
 
 /// @title Storiqa ICO contract
-// FIXME WARNING: dont use it, it was't tested and audited yet
 contract STQCrowdsale is multiowned, ReentrancyGuard {
     using Math for uint256;
     using SafeMath for uint256;
@@ -21,7 +20,7 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
     enum IcoState { INIT, ICO, PAUSED, FAILED, SUCCEEDED }
 
 
-    event StateChanged(IcoState indexed _state);
+    event StateChanged(IcoState _state);
 
 
     modifier requiresState(IcoState _state) {
@@ -30,13 +29,41 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
     }
 
     /// @dev triggers some state changes based on current time
+    /// note: function body could be skipped!
     modifier timedStateChange() {
-        if (IcoState.INIT == m_state && now >= getStartTime())
+        if (IcoState.INIT == m_state && getCurrentTime() >= getStartTime())
             changeState(IcoState.ICO);
-        if (IcoState.ICO == m_state && now > getEndTime())
+
+        if (IcoState.ICO == m_state && getCurrentTime() > getEndTime()) {
             finishICO();
 
-        _;
+            if (msg.value > 0)
+                msg.sender.transfer(msg.value);
+            // note that execution of further (but not preceding!) modifiers and functions ends here
+        } else {
+            _;
+        }
+    }
+
+    /// @dev automatic check for unaccounted withdrawals
+    modifier fundsChecker() {
+        assert(m_state == IcoState.ICO);
+
+        uint atTheBeginning = m_funds.balance;
+        if (atTheBeginning < m_lastFundsAmount) {
+            changeState(IcoState.PAUSED);
+            if (msg.value > 0)
+                msg.sender.transfer(msg.value); // we cant throw (have to save state), so refunding this way
+            // note that execution of further (but not preceding!) modifiers and functions ends here
+        } else {
+            _;
+
+            if (m_funds.balance < atTheBeginning) {
+                changeState(IcoState.PAUSED);
+            } else {
+                m_lastFundsAmount = m_funds.balance;
+            }
+        }
     }
 
 
@@ -73,26 +100,20 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
     function buy()
         public
         payable
+        nonReentrant
         timedStateChange
         requiresState(IcoState.ICO)
-        nonReentrant
+        fundsChecker
         returns (uint)
     {
-        // automatic check for unaccounted withdrawals
-        if (maybeAutoPause()) {
-            changeState(IcoState.PAUSED);
-            msg.sender.transfer(msg.value);     // we cant throw (have to save state), so refunding this way
-            return 0;
-        }
-
         address investor = msg.sender;
         uint256 payment = msg.value;
-        require(payment > 0);
+        require(payment >= c_MinInvestment);
 
         uint startingInvariant = this.balance.add(m_funds.balance);
 
         // checking for max cap
-        uint fundsAllowed = c_MaximumFunds.sub(m_funds.totalInvested());
+        uint fundsAllowed = getMaximumFunds().sub(m_funds.totalInvested());
         assert(0 != fundsAllowed);  // in this case state must not be IcoState.ICO
         payment = fundsAllowed.min256(payment);
         uint256 change = msg.value.sub(payment);
@@ -107,12 +128,12 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
         // check if ICO must be closed early
         if (change > 0)
         {
-            assert(c_MaximumFunds == m_funds.totalInvested());
+            assert(getMaximumFunds() == m_funds.totalInvested());
             finishICO();
 
             // send change
             investor.transfer(change);
-            assert(startingInvariant == this.balance.add(m_funds.balance).sub(change));
+            assert(startingInvariant == this.balance.add(m_funds.balance).add(change));
         }
         else
             assert(startingInvariant == this.balance.add(m_funds.balance));
@@ -188,7 +209,7 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
     // INTERNAL functions
 
     function finishICO() private {
-        if (m_funds.totalInvested() < c_MinFunds)
+        if (m_funds.totalInvested() < getMinFunds())
             changeState(IcoState.FAILED);
         else
             changeState(IcoState.SUCCEEDED);
@@ -204,14 +225,14 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
         else assert(false);
 
         m_state = _newState;
+        StateChanged(m_state);
+
         // this should be tightly linked
         if (IcoState.SUCCEEDED == m_state) {
             onSuccess();
         } else if (IcoState.FAILED == m_state) {
             onFailure();
         }
-
-        StateChanged(m_state);
     }
 
     function onSuccess() private {
@@ -221,23 +242,16 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
             m_token.mint(getOwner(i), tokensPerOwner);
 
         m_funds.changeState(FundsRegistry.State.SUCCEEDED);
+        m_funds.detachController();
+
+        m_token.disableMinting();
         m_token.startCirculation();
+        m_token.detachController();
     }
 
     function onFailure() private {
         m_funds.changeState(FundsRegistry.State.REFUNDING);
-    }
-
-    /// @dev automatic check for unaccounted withdrawals
-    function maybeAutoPause() private returns (bool) {
-        if (IcoState.SUCCEEDED == m_state || IcoState.FAILED == m_state)
-            return false;   // expecting withdrawals
-
-        if (m_funds.balance < m_lastFundsAmount)
-            return true;
-
-        m_lastFundsAmount = m_funds.balance;
-        return false;
+        m_funds.detachController();
     }
 
 
@@ -246,7 +260,7 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
         uint stq = _wei.mul(c_STQperETH);
 
         // apply bonus
-        stq = stq.mul(m_bonuses.getBonus(now).add(100)).div(100);
+        stq = stq.mul(m_bonuses.getBonus(getCurrentTime()).add(100)).div(100);
 
         return stq;
     }
@@ -261,11 +275,29 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
         return m_bonuses.getLastTime();
     }
 
+    /// @dev to be overridden in tests
+    function getCurrentTime() internal constant returns (uint) {
+        return now;
+    }
+
+    /// @dev to be overridden in tests
+    function getMinFunds() internal constant returns (uint) {
+        return c_MinFunds;
+    }
+
+    /// @dev to be overridden in tests
+    function getMaximumFunds() internal constant returns (uint) {
+        return c_MaximumFunds;
+    }
+
 
     // FIELDS
 
     /// @notice starting exchange rate of STQ
     uint public constant c_STQperETH = 100;
+
+    /// @notice minimum investment
+    uint public constant c_MinInvestment = 10 finney;
 
     /// @notice minimum investments to consider ICO as a success
     uint public constant c_MinFunds = 1000 ether;

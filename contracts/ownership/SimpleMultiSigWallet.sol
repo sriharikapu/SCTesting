@@ -25,6 +25,8 @@ contract SimpleMultiSigWallet is multiowned {
     }
 
     /// @notice Send `value` of ether to address `to`
+    /// @param to where to send ether
+    /// @param value amount of wei to send
     function sendEther(address to, uint value)
         external
         onlymanyowners(sha3(msg.data))

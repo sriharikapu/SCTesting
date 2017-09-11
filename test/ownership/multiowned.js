@@ -157,8 +157,17 @@ contract('multiowned', function(accounts) {
         assert(await instance.hasConfirmed(opHash, accounts[0]));
         assert(! await instance.hasConfirmed(opHash, accounts[2]));
 
+        // revoke-confirm
+        await instance.revoke(opHash, {from: accounts[0]});
+        await instance.changeOwner(accounts[1], accounts[3], {from: accounts[0]});
+        assert.deepEqual(await getOwners(instance), [accounts[0], accounts[1], accounts[2]],
+            'owners are the same');
+        assert(await instance.hasConfirmed(opHash, accounts[0]));
+        assert(! await instance.hasConfirmed(opHash, accounts[2]));
+
         await expectThrow(instance.revoke(opHash, {from: accounts[3]}));
 
+        // revoke
         await instance.revoke(opHash, {from: accounts[0]});
         assert.deepEqual(await getOwners(instance), [accounts[0], accounts[1], accounts[2]],
             'owners are the same');

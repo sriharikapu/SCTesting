@@ -16,7 +16,7 @@ contract STQToken is CirculatingToken, MintableMultiownedToken {
         require(3 == _owners.length);
     }
 
-    /// @notice Allows token transfers
+    /// @dev Allows token transfers
     function startCirculation() external onlyController {
         assert(enableCirculation());    // must be called once
     }

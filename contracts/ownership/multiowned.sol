@@ -12,6 +12,8 @@
 
 pragma solidity 0.4.15;
 
+
+/// note: during any ownership changes all pending operations (waiting for more signatures) are cancelled
 // TODO acceptOwnership
 contract multiowned {
 
@@ -31,14 +33,15 @@ contract multiowned {
 
 	// EVENTS
 
-    // this contract only has six types of events: it can accept a confirmation, in which case
-    // we record owner and operation (hash) alongside it.
-    event Confirmation(address indexed owner, bytes32 indexed operation);
-    event Revoke(address indexed owner, bytes32 indexed operation);
+    event Confirmation(address owner, bytes32 operation);
+    event Revoke(address owner, bytes32 operation);
+    event FinalConfirmation(address owner, bytes32 operation);
+
     // some others are in the case of an owner changing.
-    event OwnerChanged(address indexed oldOwner, address indexed newOwner);
-    event OwnerAdded(address indexed newOwner);
-    event OwnerRemoved(address indexed oldOwner);
+    event OwnerChanged(address oldOwner, address newOwner);
+    event OwnerAdded(address newOwner);
+    event OwnerRemoved(address oldOwner);
+
     // the last one is emitted if the required signatures change
     event RequirementChanged(uint newRequirement);
 
@@ -113,7 +116,9 @@ contract multiowned {
         assertOwnersAreConsistent();
     }
 
-    // Replaces an owner `_from` with another `_to`.
+    /// @notice replaces an owner `_from` with another `_to`.
+    /// @param _from address of owner to replace
+    /// @param _to address of new owner
     // All pending operations will be canceled!
     function changeOwner(address _from, address _to)
         external
@@ -133,6 +138,8 @@ contract multiowned {
         OwnerChanged(_from, _to);
     }
 
+    /// @notice adds an owner
+    /// @param _owner address of new owner
     // All pending operations will be canceled!
     function addOwner(address _owner)
         external
@@ -151,6 +158,8 @@ contract multiowned {
         OwnerAdded(_owner);
     }
 
+    /// @notice removes an owner
+    /// @param _owner address of owner to remove
     // All pending operations will be canceled!
     function removeOwner(address _owner)
         external
@@ -172,6 +181,8 @@ contract multiowned {
         OwnerRemoved(_owner);
     }
 
+    /// @notice changes the required number of owner signatures
+    /// @param _newRequired new number of signatures required
     // All pending operations will be canceled!
     function changeRequirement(uint _newRequired)
         external
@@ -183,11 +194,14 @@ contract multiowned {
         RequirementChanged(_newRequired);
     }
 
-    // Gets an owner by 0-indexed position
+    /// @notice Gets an owner by 0-indexed position
+    /// @param ownerIndex 0-indexed owner position
     function getOwner(uint ownerIndex) public constant returns (address) {
         return m_owners[ownerIndex + 1];
     }
 
+    /// @notice Gets owners
+    /// @return memory array of owners
     function getOwners() public constant returns (address[]) {
         address[] memory result = new address[](m_numOwners);
         for (uint i = 0; i < m_numOwners; i++)
@@ -196,18 +210,23 @@ contract multiowned {
         return result;
     }
 
+    /// @notice checks if provided address is an owner address
+    /// @param _addr address to check
+    /// @return true if it's an owner
     function isOwner(address _addr) public constant returns (bool) {
         return m_ownerIndex[_addr] > 0;
     }
 
-    // Tests ownership of the current caller.
+    /// @notice Tests ownership of the current caller.
+    /// @return true if it's an owner
     // It's advisable to call it by new owner to make sure that the same erroneous address is not copy-pasted to
     // addOwner/changeOwner and to isOwner.
     function amIOwner() external constant onlyowner returns (bool) {
         return true;
     }
 
-    // Revokes a prior confirmation of the given operation
+    /// @notice Revokes a prior confirmation of the given operation
+    /// @param _operation operation value, typically sha3(msg.data)
     function revoke(bytes32 _operation)
         external
         multiOwnedOperationIsActive(_operation)
@@ -226,6 +245,9 @@ contract multiowned {
         Revoke(msg.sender, _operation);
     }
 
+    /// @notice Checks if owner confirmed given operation
+    /// @param _operation operation value, typically sha3(msg.data)
+    /// @param _owner an owner address
     function hasConfirmed(bytes32 _operation, address _owner)
         external
         constant
@@ -243,17 +265,17 @@ contract multiowned {
         onlyowner
         returns (bool)
     {
+        if (512 == m_multiOwnedPendingIndex.length)
+            // In case m_multiOwnedPendingIndex grows too much we have to shrink it: otherwise at some point
+            // we won't be able to do it because of block gas limit.
+            // Yes, pending confirmations will be lost. Dont see any security or stability implications.
+            // TODO use more graceful approach like compact or removal of clearPending completely
+            clearPending();
+
         var pending = m_multiOwnedPending[_operation];
 
         // if we're not yet working on this operation, switch over and reset the confirmation status.
         if (! isOperationActive(_operation)) {
-            if (512 == m_multiOwnedPendingIndex.length)
-                // In case m_multiOwnedPendingIndex grows too much we have to shrink it: otherwise at some point
-                // we won't be able to do it because of block gas limit.
-                // Yes, pending confirmations will be lost. Dont see any security or stability implications.
-                // TODO use more graceful approach like compact or removal of clearPending completely
-                clearPending();
-
             // reset count of confirmations needed.
             pending.yetNeeded = m_multiOwnedRequired;
             // reset which owners have confirmed (none) - set our bitmap to 0.
@@ -267,13 +289,13 @@ contract multiowned {
         uint ownerIndexBit = makeOwnerBitmapBit(msg.sender);
         // make sure we (the message sender) haven't confirmed this operation previously.
         if (pending.ownersDone & ownerIndexBit == 0) {
-            Confirmation(msg.sender, _operation);
             // ok - check if count is enough to go ahead.
             assert(pending.yetNeeded > 0);
             if (pending.yetNeeded == 1) {
                 // enough confirmations: reset and run interior.
                 delete m_multiOwnedPendingIndex[m_multiOwnedPending[_operation].index];
                 delete m_multiOwnedPending[_operation];
+                FinalConfirmation(msg.sender, _operation);
                 return true;
             }
             else
@@ -282,6 +304,7 @@ contract multiowned {
                 pending.yetNeeded--;
                 pending.ownersDone |= ownerIndexBit;
                 assertOperationIsConsistent(_operation);
+                Confirmation(msg.sender, _operation);
             }
         }
     }

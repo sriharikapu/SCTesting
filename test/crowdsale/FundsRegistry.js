@@ -36,7 +36,7 @@ contract('FundsRegistry', function(accounts) {
         const initialBalance = web3.eth.getBalance(instance.address);
 
         for (let from_ of [role.controller, role.owner1, role.investor2, role.nobody])
-            for (let by_ of [role.owner1, role.investor1, role.controller, role.nobody]) {
+            for (let by_ of [role.owner1, role.investor1, role.controller, role.nobody, 0]) {
                 await expectThrow(instance.invested(by_, {from: from_, value: web3.toWei(2, 'finney')}));
             }
 
@@ -97,6 +97,9 @@ contract('FundsRegistry', function(accounts) {
             await expectThrow(instance.invested(role.investor1, {from: role.investor1, value: web3.toWei(5, 'finney')}));
             await expectThrow(instance.invested(role.investor2, {from: role.investor2, value: web3.toWei(5, 'finney')}));
             await expectThrow(instance.invested(role.nobody, {from: role.nobody, value: web3.toWei(5, 'finney')}));
+
+            await expectThrow(instance.invested(0, {from: role.nobody, value: web3.toWei(5, 'finney')}));
+            await expectThrow(instance.invested(0, {from: role.owner1, value: web3.toWei(5, 'finney')}));
 
             await expectThrow(instance.invested(role.owner2, {from: role.owner1, value: web3.toWei(5, 'finney')}));
             await expectThrow(instance.invested(role.nobody, {from: role.owner2, value: web3.toWei(5, 'finney')}));
@@ -194,6 +197,15 @@ contract('FundsRegistry', function(accounts) {
 
         await checkInvestmentsCantBeMade(instance);
         await checkPaymentsCantBeWithdrawn(instance);
+
+        // testing controller retirement
+        for (let from_ of [role.owner1, role.investor2, role.nobody])
+            await expectThrow(instance.detachController({from: from_}));
+
+        await instance.detachController({from: role.controller});
+
+        for (let from_ of [role.controller, role.owner1, role.investor2, role.nobody])
+            await expectThrow(instance.detachController({from: from_}));
     });
 
     it("test refunding", async function() {

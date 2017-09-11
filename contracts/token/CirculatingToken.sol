@@ -39,6 +39,7 @@ contract CirculatingToken is StandardToken {
 
         m_isCirculating = true;
         CirculationEnabled();
+        return true;
     }
 
 

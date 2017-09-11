@@ -63,8 +63,15 @@ contract MintableMultiownedToken is MultiownedControlled, StandardToken {
 
     /// @dev mints new tokens
     function mint(address _to, uint256 _amount) external onlyController {
+        require(m_externalMintingEnabled);
         payDividendsTo(_to);
         mintInternal(_to, _amount);
+    }
+
+    /// @dev disables mint(), irreversible!
+    function disableMinting() external onlyController {
+        require(m_externalMintingEnabled);
+        m_externalMintingEnabled = false;
     }
 
 
@@ -80,9 +87,12 @@ contract MintableMultiownedToken is MultiownedControlled, StandardToken {
         require(0 != _tokensCreated);
         require(_tokensCreated < totalSupply / 2);  // otherwise it looks like an error
 
+        uint256 totalSupplyWas = totalSupply;
+
+        m_emissions.push(EmissionInfo({created: _tokensCreated, totalSupplyWas: totalSupplyWas}));
         mintInternal(dividendsPool, _tokensCreated);
-        m_emissions.push(EmissionInfo({created: _tokensCreated, totalSupplyWas: totalSupply}));
-        Emission(_tokensCreated, totalSupply, now);
+
+        Emission(_tokensCreated, totalSupplyWas, now);
     }
 
     function mintInternal(address _to, uint256 _amount) internal {
@@ -139,6 +149,9 @@ contract MintableMultiownedToken is MultiownedControlled, StandardToken {
 
 
     // FIELDS
+
+    /// @notice if this true then token is still externally mintable (but this flag does't affect emissions!)
+    bool public m_externalMintingEnabled = true;
 
     /// @dev internal address of dividends in balances mapping.
     address dividendsPool;

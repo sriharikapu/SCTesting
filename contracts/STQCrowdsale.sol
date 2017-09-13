@@ -78,6 +78,7 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
         m_token = STQToken(_token);
         m_funds = FundsRegistry(_funds);
 
+        m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: 1505681999 + MSK2UTC_DELTA, bonus: 50}));
         m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: 1505768399 + MSK2UTC_DELTA, bonus: 25}));
         m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: 1505941199 + MSK2UTC_DELTA, bonus: 20}));
         m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: 1506200399 + MSK2UTC_DELTA, bonus: 15}));
@@ -306,7 +307,7 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
     uint public constant c_MaximumFunds = 500000 ether;
 
     /// @notice start time of the ICO
-    uint public constant c_startTime = 1505682000 + MSK2UTC_DELTA;
+    uint public constant c_startTime = 1505541600;
 
     /// @notice timed bonuses
     FixedTimeBonuses.Data m_bonuses;

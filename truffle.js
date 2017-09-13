@@ -14,6 +14,13 @@ module.exports = {
       host: "localhost",
       port: 8547,
       network_id: 3
+    },
+
+    // geth --rpcport 8549 --wsport 8550 --rpc console --fast
+    mainnet: {
+      host: "localhost",
+      port: 8549,
+      network_id: 1
     }
   }
 };

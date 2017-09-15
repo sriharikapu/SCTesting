@@ -21,6 +21,7 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
 
 
     event StateChanged(IcoState _state);
+    event FundTransfer(address backer, uint amount, bool isContribution);
 
 
     modifier requiresState(IcoState _state) {
@@ -125,6 +126,7 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
 
         // record payment
         m_funds.invested.value(payment)(investor);
+        FundTransfer(investor, payment, true);
 
         // check if ICO must be closed early
         if (change > 0)

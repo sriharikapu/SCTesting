@@ -297,7 +297,7 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
     // FIELDS
 
     /// @notice starting exchange rate of STQ
-    uint public constant c_STQperETH = 100;
+    uint public constant c_STQperETH = 100000;
 
     /// @notice minimum investment
     uint public constant c_MinInvestment = 10 finney;

@@ -4,6 +4,7 @@
 
 import expectThrow from './helpers/expectThrow';
 import {l, logEvents} from './helpers/debug';
+import {instantiateCrowdsale} from './helpers/storiqa';
 
 const STQToken = artifacts.require("./STQToken.sol");
 const FundsRegistry = artifacts.require("./crowdsale/FundsRegistry.sol");
@@ -26,22 +27,7 @@ contract('STQCrowdsale', function(accounts) {
     }
 
     async function instantiate(args=undefined) {
-        if (undefined == args)
-            args = {};
-
-        const role = getRoles();
-
-        const funds = await (args.fundsClass || FundsRegistry).new([role.owner1, role.owner2, role.owner3], 2, 0, {from: role.nobody});
-        const token = await STQToken.new([role.owner1, role.owner2, role.owner3], {from: role.nobody});
-        const crowdsale = await STQCrowdsale.new([role.owner1, role.owner2, role.owner3], token.address, funds.address, {from: role.nobody});
-
-        await token.setController(crowdsale.address, {from: role.owner1});
-        await token.setController(crowdsale.address, {from: role.owner2});
-
-        await funds.setController(crowdsale.address, {from: role.owner1});
-        await funds.setController(crowdsale.address, {from: role.owner2});
-
-        return [crowdsale, token, funds];
+        return instantiateCrowdsale(getRoles(), args);
     }
 
     async function assertBalances(crowdsale, token, funds, expected) {

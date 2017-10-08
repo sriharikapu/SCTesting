@@ -98,6 +98,7 @@ contract MintableMultiownedToken is MultiownedControlled, StandardToken {
     function mintInternal(address _to, uint256 _amount) internal {
         totalSupply = totalSupply.add(_amount);
         balances[_to] = balances[_to].add(_amount);
+        Transfer(this, _to, _amount);
         Mint(_to, _amount);
     }
 
@@ -110,6 +111,7 @@ contract MintableMultiownedToken is MultiownedControlled, StandardToken {
         if (0 != dividends) {
             balances[dividendsPool] = balances[dividendsPool].sub(dividends);
             balances[_to] = balances[_to].add(dividends);
+            Transfer(dividendsPool, _to, dividends);
         }
         m_lastAccountEmission[_to] = getLastEmissionNum();
     }

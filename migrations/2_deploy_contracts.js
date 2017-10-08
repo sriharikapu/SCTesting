@@ -1,34 +1,16 @@
 'use strict';
 
-const _owners = [111, 222, 333];
+const _owners = ['0xaF9Eca973ba1bf87923d45dCE471181F77DE301e', '0xc21afA07cE196500D45cD13B835645a2B05760e7', '0x7e71a0514D727A2828209CF74f05686f382e545D'];
 
-const SimpleMultiSigWallet = artifacts.require("./ownership/SimpleMultiSigWallet.sol");
+const STQTokenAddress = '0x5c3a228510D246b78a3765C20221Cbf3082b44a4';
+const STQPreICO = artifacts.require("./STQPreICO.sol");
 
-const STQToken = artifacts.require("./STQToken.sol");
-const FundsRegistry = artifacts.require("./crowdsale/FundsRegistry.sol");
-
-const FixedTimeBonuses = artifacts.require("./crowdsale/FixedTimeBonuses.sol");
-const STQCrowdsale = artifacts.require("./STQCrowdsale.sol");
-
-const STQCrowdsaleTestHelper = artifacts.require("./test_helpers/STQCrowdsaleTestHelper.sol");
+const saleWallet = '0x0Eed5de3487aEC55bA585212DaEDF35104c27bAF';
 
 
 module.exports = function(deployer, network) {
-  deployer.deploy(SimpleMultiSigWallet, _owners, 2);
-  deployer.deploy(STQToken, _owners).then(function() {
-    return deployer.deploy(FundsRegistry, _owners, 2, 0);
-  }).then(function() {
-    return deployer.deploy(FixedTimeBonuses);
-  }).then(function() {
-    if (network == "development") {
-      deployer.link(FixedTimeBonuses, STQCrowdsaleTestHelper);
-    }
-    deployer.link(FixedTimeBonuses, STQCrowdsale);
-    return deployer.deploy(STQCrowdsale, _owners, STQToken.address, FundsRegistry.address);
-  });
+  deployer.deploy(STQPreICO, STQTokenAddress, saleWallet);
 
   // owners have to manually perform
-  // STQToken.setController(address of STQCrowdsale);
-  // and
-  // FundsRegistry.setController(address of STQCrowdsale);
+  // STQToken.setController(address of STQPreICO);
 };

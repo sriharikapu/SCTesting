@@ -10,22 +10,7 @@ const STQToken = artifacts.require("./STQToken.sol");
 
 contract('STQPreICO', function(accounts) {
 
-    function getRoles() {
-        return {
-            cash: accounts[0],
-            owner3: accounts[0],
-            owner1: accounts[1],
-            owner2: accounts[2],
-            investor1: accounts[2],
-            investor2: accounts[3],
-            investor3: accounts[4],
-            nobody: accounts[5]
-        };
-    }
-
-    async function instantiate() {
-        const role = getRoles();
-
+    async function instantiate(role) {
         const token = await STQToken.new([role.owner1, role.owner2, role.owner3], {from: role.nobody});
         const preICO = await STQPreICO.new(token.address, role.cash, {from: role.nobody});
         preICO.transferOwnership(role.owner1, {from: role.nobody});
@@ -37,7 +22,7 @@ contract('STQPreICO', function(accounts) {
     }
 
 
-    for (const [name, fn] of crowdsaleUTest(getRoles(), instantiate, {
+    for (const [name, fn] of crowdsaleUTest(accounts, instantiate, {
         extraPaymentFunction: 'buy',
         rate: 100000,
         startTime: (new Date('Thu, 12 Oct 2017 0:00:00 GMT')).getTime() / 1000,

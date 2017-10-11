@@ -9,7 +9,23 @@ import {l} from '../helpers/debug';
 import '../helpers/typeExt';
 
 
-export function crowdsaleUTest(role, instantiate, settings) {
+function getRoles(accounts) {
+    return {
+        cash: accounts[0],
+        owner3: accounts[0],
+        owner1: accounts[1],
+        owner2: accounts[2],
+        investor1: accounts[2],
+        investor2: accounts[3],
+        investor3: accounts[4],
+        nobody: accounts[5]
+    };
+}
+
+
+export function crowdsaleUTest(accounts, instantiate, settings) {
+    const role = getRoles(accounts);
+
     // default settings
 
     const defaultSettings = {
@@ -79,7 +95,7 @@ export function crowdsaleUTest(role, instantiate, settings) {
     // testing-related functions
 
     async function ourInstantiate() {
-        const [sale, token, cash] = await instantiate();
+        const [sale, token, cash] = await instantiate(role);
 
         if (settings.hasAnalytics) {
             await sale.createMorePaymentChannels(5, {from: role.owner1});
@@ -281,6 +297,9 @@ export function crowdsaleUTest(role, instantiate, settings) {
             const cashInitial = await web3.eth.getBalance(funds);
             const expectedTokenBalances = {};
 
+            await expectThrow(crowdsale.createMorePaymentChannels(5, {from: role.investor3}));
+            await expectThrow(crowdsale.createMorePaymentChannels(5, {from: role.nobody}));
+
             assert.equal(await crowdsale.paymentChannelsCount(), 5);
             const channel1 = await crowdsale.m_paymentChannels(0);
             const channel2 = await crowdsale.m_paymentChannels(1);
@@ -323,6 +342,9 @@ export function crowdsaleUTest(role, instantiate, settings) {
             await assertTokenBalances(token, expectedTokenBalances);
             assertBigNumberEqual(await crowdsale.m_investmentsByPaymentChannel(channel3), web3.toWei(80, 'finney'));
             assertBigNumberEqual(await crowdsale.m_investmentsByPaymentChannel(channel2), web3.toWei(100, 'finney'));
+
+            await expectThrow(crowdsale.createMorePaymentChannels(5, {from: role.investor3}));
+            await expectThrow(crowdsale.createMorePaymentChannels(5, {from: role.nobody}));
         }]);
 
 

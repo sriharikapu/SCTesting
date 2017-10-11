@@ -129,7 +129,7 @@ contract STQPreICO is Ownable, ReentrancyGuard, InvestmentAnalytics {
     uint public constant c_MinInvestment = 10 finney;
 
     /// @notice maximum investments to be accepted during pre-ICO
-    uint public constant c_MaximumFunds = 8000 ether;
+    uint public constant c_MaximumFunds = 3500 ether;
 
 
     /// @notice starting exchange rate of STQ

@@ -75,7 +75,7 @@ contract InvestmentAnalytics {
     }
 
     /// @dev callback
-    function iaOnInvested(address investor, uint payment, bool usingPaymentChannel) internal {
+    function iaOnInvested(address /*investor*/, uint /*payment*/, bool /*usingPaymentChannel*/) internal {
     }
 
 

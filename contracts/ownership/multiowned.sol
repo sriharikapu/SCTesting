@@ -334,6 +334,7 @@ contract multiowned {
 
     function clearPending() private onlyowner {
         uint length = m_multiOwnedPendingIndex.length;
+        // TODO block gas limit
         for (uint i = 0; i < length; ++i) {
             if (m_multiOwnedPendingIndex[i] != 0)
                 delete m_multiOwnedPending[m_multiOwnedPendingIndex[i]];

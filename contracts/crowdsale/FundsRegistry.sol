@@ -1,12 +1,13 @@
 pragma solidity 0.4.15;
 
 import '../ownership/MultiownedControlled.sol';
+import '../security/ArgumentsChecker.sol';
 import 'zeppelin-solidity/contracts/math/SafeMath.sol';
 import 'zeppelin-solidity/contracts/ReentrancyGuard.sol';
 
 
 /// @title registry of funds sent by investors
-contract FundsRegistry is MultiownedControlled, ReentrancyGuard {
+contract FundsRegistry is ArgumentsChecker, MultiownedControlled, ReentrancyGuard {
     using SafeMath for uint256;
 
     enum State {
@@ -78,10 +79,10 @@ contract FundsRegistry is MultiownedControlled, ReentrancyGuard {
     /// @param value amount of wei to send
     function sendEther(address to, uint value)
         external
+        validAddress(to)
         onlymanyowners(sha3(msg.data))
         requiresState(State.SUCCEEDED)
     {
-        require(0 != to);
         require(value > 0 && this.balance >= value);
         to.transfer(value);
         EtherSent(to, value);

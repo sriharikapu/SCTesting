@@ -1,7 +1,5 @@
 'use strict';
 
-// testrpc has to be run as testrpc -u 0 -u 1 -u 2 -u 3 -u 4 -u 5
-
 import {crowdsaleUTest} from './utest/Crowdsale';
 
 const STQPreICO2 = artifacts.require("./test_helpers/STQPreICO2TestHelper.sol");

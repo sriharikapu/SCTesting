@@ -1,13 +1,12 @@
 'use strict';
 
-// testrpc has to be run as testrpc -u 0 -u 1 -u 2 -u 3 -u 4 -u 5
+// testrpc has to be run as testrpc -u 0 -u 1 -u 2 -u 3 -u 4 -u 5 -u 6
 
+import './helpers/typeExt';
 import expectThrow from './helpers/expectThrow';
 import {l, logEvents} from './helpers/debug';
 import {instantiateCrowdsale} from './helpers/storiqa';
 
-const STQToken = artifacts.require("./STQToken.sol");
-const FundsRegistry = artifacts.require("./crowdsale/FundsRegistry.sol");
 const STQCrowdsale = artifacts.require("../test_helpers/STQCrowdsaleTestHelper.sol");
 
 
@@ -22,12 +21,18 @@ contract('STQCrowdsale', function(accounts) {
             investor1: accounts[2],
             investor2: accounts[3],
             investor3: accounts[4],
-            nobody: accounts[5]
+            deployer: accounts[5],
+            nobody: accounts[6]
         };
     }
 
     async function instantiate(args=undefined) {
         return instantiateCrowdsale(getRoles(), args);
+    }
+
+    function assertBigNumberEqual(actual, expected, message=undefined) {
+        assert(actual.eq(expected), "{2}expected {0}, but got: {1}".format(expected, actual,
+            message ? message + ': ' : ''));
     }
 
     async function assertBalances(crowdsale, token, funds, expected) {
@@ -93,16 +98,16 @@ contract('STQCrowdsale', function(accounts) {
 
         // too early!
         await crowdsale.setTime(1505531600, {from: role.owner1});
-        await expectThrow(crowdsale.sendTransaction({from: role.investor1, value: web3.toWei(20, 'finney')}));
-        await crowdsale.setTime(1505541599, {from: role.owner1});
-        await expectThrow(crowdsale.sendTransaction({from: role.investor1, value: web3.toWei(20, 'finney')}));
+        await expectThrow(crowdsale.sendTransaction({from: role.investor3, value: web3.toWei(20, 'finney')}));
+        await crowdsale.setTime(1508889599, {from: role.owner1});
+        await expectThrow(crowdsale.sendTransaction({from: role.investor3, value: web3.toWei(20, 'finney')}));
 
-        // first investment at the first second, +25%
-        await crowdsale.setTime(1505692800, {from: role.owner1});
+        // first investment at the first second, +30%
+        await crowdsale.setTime(1508889600, {from: role.owner1});
         await crowdsale.sendTransaction({from: role.investor1, value: web3.toWei(20, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(20, 'finney'));
         // remember: this is STQ balance
-        assert.equal(await token.balanceOf(role.investor1), STQ(2.5));
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(2600));
         await expectThrow(crowdsale.sendTransaction({from: role.nobody, value: web3.toWei(0, 'finney')}));
         assert.equal(await token.balanceOf(role.nobody), STQ(0));
 
@@ -111,25 +116,25 @@ contract('STQCrowdsale', function(accounts) {
         await expectThrow(funds.sendTransaction({from: role.investor1, value: web3.toWei(20, 'finney')}));
 
         // +5%
-        await crowdsale.setTime(1506560000, {from: role.owner1});
+        await crowdsale.setTime(1511913601, {from: role.owner1});
         await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(100, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(120, 'finney'));
-        assert.equal(await token.balanceOf(role.investor1), STQ(2.5));
-        assert.equal(await token.balanceOf(role.investor2), STQ(10.5));
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(2600));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(10500));
 
         // 2nd investment of investor1
         await crowdsale.sendTransaction({from: role.investor1, value: web3.toWei(20, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(140, 'finney'));
-        assert.equal(await token.balanceOf(role.investor1), STQ(4.6));
-        assert.equal(await token.balanceOf(role.investor2), STQ(10.5));
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(4700));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(10500));
 
         // +0%
-        await crowdsale.setTime(1507660000, {from: role.owner1});
+        await crowdsale.setTime(1513728001, {from: role.owner1});
         await crowdsale.sendTransaction({from: role.investor3, value: web3.toWei(40, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(180, 'finney'));
-        assert.equal(await token.balanceOf(role.investor1), STQ(4.6));
-        assert.equal(await token.balanceOf(role.investor2), STQ(10.5));
-        assert.equal(await token.balanceOf(role.investor3), STQ(4));
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(4700));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(10500));
+        assertBigNumberEqual(await token.balanceOf(role.investor3), STQ(4000));
         await expectThrow(crowdsale.sendTransaction({from: role.nobody, value: web3.toWei(0, 'finney')}));
 
         await checkNoTransfers(crowdsale, token, funds);
@@ -137,59 +142,57 @@ contract('STQCrowdsale', function(accounts) {
         await checkNotSendingEther(crowdsale, token, funds);
 
         // too late
-        await crowdsale.setTime(1518660000, {from: role.owner1});
+        await crowdsale.setTime(1514246400, {from: role.owner1});
         // this tx will implicitly finish ICO
         await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(20, 'finney')});
-        assert.equal(await token.balanceOf(role.investor2), STQ(10.5));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(10500));
         await expectThrow(crowdsale.sendTransaction({from: role.nobody, value: web3.toWei(20, 'finney')}));
         assert.equal(await token.balanceOf(role.nobody), STQ(0));
 
-        const totalSupply = await token.totalSupply();  // 95499999999999999998
-        assert(totalSupply.lt(STQ(96)) && totalSupply.gt(STQ(95)));
+        await assertBalances(crowdsale, token, funds, web3.toWei(180, 'finney'));
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(4700));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(10500));
+        assertBigNumberEqual(await token.balanceOf(role.investor3), STQ(4000));
+        assertBigNumberEqual(await token.totalSupply(), STQ(19200));
 
+        assert.equal(await crowdsale.m_state(), 4);     // now we are in DISTRIBUTING_BONUSES
+
+        await checkNoTransfers(crowdsale, token, funds);
         await checkNotInvesting(crowdsale, token, funds);
         await checkNotWithdrawing(crowdsale, token, funds);
+        await checkNotSendingEther(crowdsale, token, funds);
 
         assert.equal(await funds.getInvestorsCount(), 3);
         assert.equal(await funds.m_investors(0), role.investor1);
         assert.equal(await funds.m_investors(1), role.investor2);
         assert.equal(await funds.m_investors(2), role.investor3);
-    });
 
+        await crowdsale.distributeBonuses(10, {from: role.nobody});
 
-    it("test before ICO", async function() {
-        const role = getRoles();
+        await assertBalances(crowdsale, token, funds, web3.toWei(180, 'finney'));
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(5200));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(13000));
+        assertBigNumberEqual(await token.balanceOf(role.investor3), STQ(5200));
+        assertBigNumberEqual(await token.balanceOf(role.owner1), STQ(15600));   // team
+        assertBigNumberEqual(await token.totalSupply(), STQ(39000));
 
-        const [crowdsale, token, funds] = await instantiate();
-
-        await crowdsale.setTime(1505541600, {from: role.owner1});
-        await crowdsale.sendTransaction({from: role.investor1, value: web3.toWei(20, 'finney')});
-        await crowdsale.setTime(1505551600, {from: role.owner1});
-        await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(60, 'finney')});
-        await assertBalances(crowdsale, token, funds, web3.toWei(80, 'finney'));
-        assert.equal(await token.balanceOf(role.investor1), STQ(3));
-        assert.equal(await token.balanceOf(role.investor2), STQ(9));
-
-        await checkNoTransfers(crowdsale, token, funds);
+        assert.equal(await crowdsale.m_state(), 5);     // now we are in SUCCEEDED
+        await checkNotInvesting(crowdsale, token, funds);
         await checkNotWithdrawing(crowdsale, token, funds);
-        await checkNotSendingEther(crowdsale, token, funds);
     });
 
 
-    it("test min cap", async function() {
+   it("test min cap", async function() {
         const role = getRoles();
 
         const [crowdsale, token, funds] = await instantiate();
 
-        await crowdsale.setTime(1505692800, {from: role.owner1});
+        await crowdsale.setTime(1508889600, {from: role.owner1});
         await crowdsale.sendTransaction({from: role.investor1, value: web3.toWei(20, 'finney')});
-        await crowdsale.setTime(1506560000, {from: role.owner1});   // +5%
         await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(60, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(80, 'finney'));
-        assert.equal(await token.balanceOf(role.investor1), STQ(2.5));
-        assert.equal(await token.balanceOf(role.investor2), STQ(6.3));
 
-        await crowdsale.setTime(1508371200, {from: role.owner1});
+        await crowdsale.setTime(1514246400, {from: role.owner1});
         await crowdsale.checkTime({from: role.owner1});
 
         assert.equal(await crowdsale.m_state(), 3);
@@ -215,74 +218,73 @@ contract('STQCrowdsale', function(accounts) {
 
         const [crowdsale, token, funds] = await instantiate();
 
-        await crowdsale.setTime(1505692800, {from: role.owner1});
-        await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(20, 'finney')});
+        // +5%
+        await crowdsale.setTime(1511913601, {from: role.owner1});
+        await crowdsale.sendTransaction({from: role.investor1, value: web3.toWei(20, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(20, 'finney'));
-        assert.equal(await token.balanceOf(role.investor2), STQ(2.5));
-        assert.equal(await token.totalSupply(), STQ(2.5));
 
         const investor3initial = await web3.eth.getBalance(role.investor3);
-        await crowdsale.sendTransaction({from: role.investor3, value: web3.toWei(2000, 'finney')});
+        await crowdsale.sendTransaction({from: role.investor3, value: web3.toWei(1000, 'finney'), gasPrice: 0});
 
         const investor3spent = investor3initial.sub(await web3.eth.getBalance(role.investor3));
-        assert(investor3spent.lt(web3.toWei(1000, 'finney')), 'change has to be sent');
+        assertBigNumberEqual(investor3spent, web3.toWei(378, 'finney'), 'change has to be sent');
 
         assert.equal(await crowdsale.m_state(), 4);
-        await assertBalances(crowdsale, token, funds, web3.toWei(400, 'finney'));
-        assert.equal(await token.balanceOf(role.investor2), STQ(2.5));
-        assert.equal(await token.balanceOf(role.investor3), STQ(47.5));
+        await assertBalances(crowdsale, token, funds, web3.toWei(398, 'finney'));
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(2100));
+        assertBigNumberEqual(await token.balanceOf(role.investor3), STQ(39690));
+
+        await checkNoTransfers(crowdsale, token, funds);
+        await checkNotInvesting(crowdsale, token, funds);
+        await checkNotWithdrawing(crowdsale, token, funds);
+        await checkNotSendingEther(crowdsale, token, funds);
+
+        await crowdsale.distributeBonuses(10, {from: role.nobody});
+
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(2600));
+        assertBigNumberEqual(await token.balanceOf(role.investor3), STQ(49140));
 
         await checkNotInvesting(crowdsale, token, funds);
         await checkNotWithdrawing(crowdsale, token, funds);
     });
 
 
-    it("test minting for owners", async function() {
+    it("test minting for the team", async function() {
         const role = getRoles();
 
         let [crowdsale, token, funds] = await instantiate();
 
-        await crowdsale.setTime(1505692800, {from: role.owner1});
+        await crowdsale.setTime(1508889600, {from: role.owner1});
         await crowdsale.sendTransaction({from: role.investor1, value: web3.toWei(20, 'finney')});
         await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(100, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(120, 'finney'));
-        assert.equal(await token.balanceOf(role.investor1), STQ(2.5));
-        assert.equal(await token.balanceOf(role.investor2), STQ(12.5));
-        assert.equal(await token.totalSupply(), STQ(15));
 
-        await crowdsale.setTime(1508371200, {from: role.owner1});
+        await crowdsale.setTime(1514246400, {from: role.owner1});
         await crowdsale.checkTime({from: role.owner1});
+        await crowdsale.distributeBonuses(10, {from: role.nobody});
 
-        assert.equal(await token.balanceOf(role.owner1), STQ(20));
-        assert.equal(await token.balanceOf(role.owner2), STQ(22.5));    // he is also investor1
-        assert.equal(await token.balanceOf(role.owner3), STQ(20));
-        assert.equal(await token.balanceOf(role.investor1), STQ(22.5)); // he is also owner2!
-        assert.equal(await token.balanceOf(role.investor2), STQ(12.5));
-        assert.equal(await token.totalSupply(), STQ(75));
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(2600));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(13000));
+        assertBigNumberEqual(await token.balanceOf(role.owner1), STQ(10400));
+        assertBigNumberEqual(await token.totalSupply(), STQ(26000));
         await assertBalances(crowdsale, token, funds, web3.toWei(120, 'finney'));
 
-        // now, without owner-and-investor person
+        // now, with owner-and-investor person
 
         [crowdsale, token, funds] = await instantiate();
 
-        await crowdsale.setTime(1505692800, {from: role.owner1});
-        await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(20, 'finney')});
-        await crowdsale.sendTransaction({from: role.investor3, value: web3.toWei(100, 'finney')});
+        await crowdsale.setTime(1508889600, {from: role.owner1});
+        await crowdsale.sendTransaction({from: role.owner1, value: web3.toWei(20, 'finney')});
+        await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(100, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(120, 'finney'));
-        assert.equal(await token.balanceOf(role.investor2), STQ(2.5));
-        assert.equal(await token.balanceOf(role.investor3), STQ(12.5));
-        assert.equal(await token.totalSupply(), STQ(15));
 
-        // finish
-        await crowdsale.setTime(1508371200, {from: role.owner1});
+        await crowdsale.setTime(1514246400, {from: role.owner1});
         await crowdsale.checkTime({from: role.owner1});
+        await crowdsale.distributeBonuses(10, {from: role.nobody});
 
-        assert.equal(await token.balanceOf(role.owner1), STQ(20));
-        assert.equal(await token.balanceOf(role.owner2), STQ(20));
-        assert.equal(await token.balanceOf(role.owner3), STQ(20));
-        assert.equal(await token.balanceOf(role.investor2), STQ(2.5));
-        assert.equal(await token.balanceOf(role.investor3), STQ(12.5));
-        assert.equal(await token.totalSupply(), STQ(75));
+        assertBigNumberEqual(await token.balanceOf(role.owner1), STQ(13000));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(13000));
+        assertBigNumberEqual(await token.totalSupply(), STQ(26000));
         await assertBalances(crowdsale, token, funds, web3.toWei(120, 'finney'));
     });
 
@@ -292,28 +294,27 @@ contract('STQCrowdsale', function(accounts) {
 
         const [crowdsale, token, funds] = await instantiate();
 
-        await crowdsale.setTime(1505692800, {from: role.owner1});
-        await crowdsale.sendTransaction({from: role.investor3, value: web3.toWei(20, 'finney')});
+        await crowdsale.setTime(1508889600, {from: role.owner1});
+        await crowdsale.sendTransaction({from: role.investor1, value: web3.toWei(20, 'finney')});
         await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(100, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(120, 'finney'));
-        assert.equal(await token.balanceOf(role.investor3), STQ(2.5));
-        assert.equal(await token.balanceOf(role.investor2), STQ(12.5));
-        assert.equal(await token.totalSupply(), STQ(15));
 
         await checkNoTransfers(crowdsale, token, funds);
 
         // finish
-        await crowdsale.setTime(1508371200, {from: role.owner1});
+        await crowdsale.setTime(1514246400, {from: role.owner1});
         await crowdsale.checkTime({from: role.owner1});
+        await crowdsale.distributeBonuses(10, {from: role.nobody});
 
         await expectThrow(token.transfer(role.nobody, STQ(2.5), {from: role.nobody}));
         await expectThrow(token.transfer(role.investor3, STQ(2.5), {from: role.nobody}));
 
-        await token.transfer(role.investor3, STQ(2.5), {from: role.investor2});
+        await token.transfer(role.investor3, STQ(1000), {from: role.investor2});
         await assertBalances(crowdsale, token, funds, web3.toWei(120, 'finney'));
-        assert.equal(await token.balanceOf(role.investor3), STQ(5));
-        assert.equal(await token.balanceOf(role.investor2), STQ(10));
-        assert.equal(await token.totalSupply(), STQ(75));   // 15 + 60 minted for owners
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(2600));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(12000));
+        assertBigNumberEqual(await token.balanceOf(role.investor3), STQ(1000));
+        assertBigNumberEqual(await token.totalSupply(), STQ(26000));
 
         await checkNotInvesting(crowdsale, token, funds);
         await checkNotWithdrawing(crowdsale, token, funds);
@@ -325,14 +326,10 @@ contract('STQCrowdsale', function(accounts) {
 
         const [crowdsale, token, funds] = await instantiate();
 
-        await crowdsale.setTime(1505692810, {from: role.owner1});
-        await crowdsale.sendTransaction({from: role.investor3, value: web3.toWei(20, 'finney')});
-        await crowdsale.setTime(1505692812, {from: role.owner1});
+        await crowdsale.setTime(1508889600, {from: role.owner1});
+        await crowdsale.sendTransaction({from: role.investor1, value: web3.toWei(20, 'finney')});
         await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(100, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(120, 'finney'));
-        assert.equal(await token.balanceOf(role.investor3), STQ(2.5));
-        assert.equal(await token.balanceOf(role.investor2), STQ(12.5));
-        assert.equal(await token.totalSupply(), STQ(15));
 
         // pause
         await expectThrow(crowdsale.pause({from: role.nobody}));
@@ -353,18 +350,17 @@ contract('STQCrowdsale', function(accounts) {
 
         await crowdsale.sendTransaction({from: role.investor3, value: web3.toWei(20, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(140, 'finney'));
-        assert.equal(await token.balanceOf(role.investor3), STQ(5));
-        assert.equal(await token.balanceOf(role.investor2), STQ(12.5));
-        assert.equal(await token.totalSupply(), STQ(17.5));
+        assertBigNumberEqual(await token.balanceOf(role.investor3), STQ(2600));
 
         await checkNoTransfers(crowdsale, token, funds);
         await checkNotWithdrawing(crowdsale, token, funds);
         await checkNotSendingEther(crowdsale, token, funds);
 
         // finish
-        await crowdsale.setTime(1508371200, {from: role.owner1});
+        await crowdsale.setTime(1514246400, {from: role.owner1});
         await crowdsale.checkTime({from: role.owner1});
-        assert.equal(await crowdsale.m_state(), 4);
+        await crowdsale.distributeBonuses(10, {from: role.nobody});
+        assert.equal(await crowdsale.m_state(), 5);
         await assertBalances(crowdsale, token, funds, web3.toWei(140, 'finney'));
     });
 
@@ -374,14 +370,10 @@ contract('STQCrowdsale', function(accounts) {
 
         const [crowdsale, token, funds] = await instantiate();
 
-        await crowdsale.setTime(1505692810, {from: role.owner1});
-        await crowdsale.sendTransaction({from: role.investor3, value: web3.toWei(20, 'finney')});
-        await crowdsale.setTime(1505692812, {from: role.owner1});
+        await crowdsale.setTime(1508889600, {from: role.owner1});
+        await crowdsale.sendTransaction({from: role.investor1, value: web3.toWei(20, 'finney')});
         await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(100, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(120, 'finney'));
-        assert.equal(await token.balanceOf(role.investor3), STQ(2.5));
-        assert.equal(await token.balanceOf(role.investor2), STQ(12.5));
-        assert.equal(await token.totalSupply(), STQ(15));
 
         await crowdsale.pause({from: role.owner3});
 
@@ -402,7 +394,7 @@ contract('STQCrowdsale', function(accounts) {
 
         const [crowdsale, token, funds] = await instantiate();
 
-        await crowdsale.setTime(1505692810, {from: role.owner1});
+        await crowdsale.setTime(1508889600, {from: role.owner1});
         await crowdsale.sendTransaction({from: role.investor3, value: web3.toWei(20, 'finney')});
         await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(100, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(120, 'finney'));
@@ -412,8 +404,9 @@ contract('STQCrowdsale', function(accounts) {
         await checkNotSendingEther(crowdsale, token, funds);
 
         // finish
-        await crowdsale.setTime(1508371200, {from: role.owner1});
+        await crowdsale.setTime(1514246400, {from: role.owner1});
         await crowdsale.checkTime({from: role.owner1});
+        await crowdsale.distributeBonuses(10, {from: role.nobody});
 
         await checkNotInvesting(crowdsale, token, funds);
         await checkNotWithdrawing(crowdsale, token, funds);
@@ -442,7 +435,7 @@ contract('STQCrowdsale', function(accounts) {
             fundsClass: artifacts.require("../test_helpers/crowdsale/FundsRegistryTestHelper.sol")
         });
 
-        await crowdsale.setTime(1505692810, {from: role.owner1});
+        await crowdsale.setTime(1508889600, {from: role.owner1});
         await crowdsale.sendTransaction({from: role.investor3, value: web3.toWei(20, 'finney')});
         await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(100, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(120, 'finney'));
@@ -461,83 +454,22 @@ contract('STQCrowdsale', function(accounts) {
     });
 
 
-    it("test emissions", async function() {
-        const role = getRoles();
-
-        const [crowdsale, token, funds] = await instantiate();
-
-        await crowdsale.setTime(1505692810, {from: role.owner1});
-        await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(20, 'finney')});
-        await crowdsale.sendTransaction({from: role.investor3, value: web3.toWei(100, 'finney')});
-        await assertBalances(crowdsale, token, funds, web3.toWei(120, 'finney'));
-
-        // finish
-        await crowdsale.setTime(1508371200, {from: role.owner1});
-        await crowdsale.checkTime({from: role.owner1});
-
-        await checkNotInvesting(crowdsale, token, funds);
-        await checkNotWithdrawing(crowdsale, token, funds);
-
-        assert.equal(await token.balanceOf(role.owner1), STQ(20));
-        assert.equal(await token.balanceOf(role.owner2), STQ(20));
-        assert.equal(await token.balanceOf(role.owner3), STQ(20));
-        assert.equal(await token.balanceOf(role.investor2), STQ(2.5));
-        assert.equal(await token.balanceOf(role.investor3), STQ(12.5));
-        assert.equal(await token.totalSupply(), STQ(75));
-
-        // checking circulation
-        await token.transfer(role.investor3, STQ(2.5), {from: role.investor2});
-        await token.transfer(role.investor2, STQ(10), {from: role.owner1});
-        assert.equal(await token.balanceOf(role.owner1), STQ(10));
-        assert.equal(await token.balanceOf(role.owner2), STQ(20));
-        assert.equal(await token.balanceOf(role.owner3), STQ(20));
-        assert.equal(await token.balanceOf(role.investor2), STQ(10));
-        assert.equal(await token.balanceOf(role.investor3), STQ(15));
-        assert.equal(await token.totalSupply(), STQ(75));
-
-        await token.emission(15, {from: role.owner2});
-        await token.emission(15, {from: role.owner3});
-        assert.equal(await token.totalSupply(), STQ(90));
-
-        await token.requestDividends({from: role.investor3});
-        await token.requestDividends({from: role.owner1});
-        await token.transfer(role.investor2, STQ(5), {from: role.investor3});
-
-        assert.equal(await token.balanceOf(role.owner1), STQ(12));
-        assert.equal(await token.balanceOf(role.owner2), STQ(20));
-        assert.equal(await token.balanceOf(role.owner3), STQ(20));
-        assert.equal(await token.balanceOf(role.investor2), STQ(17));
-        assert.equal(await token.balanceOf(role.investor3), STQ(13));
-        assert.equal(await token.totalSupply(), STQ(90));
-
-        // further requests change nothing
-        await token.requestDividends({from: role.investor2});
-        await token.requestDividends({from: role.investor3});
-        assert.equal(await token.balanceOf(role.investor2), STQ(17));
-        assert.equal(await token.balanceOf(role.investor3), STQ(13));
-
-        await checkNotInvesting(crowdsale, token, funds);
-        await checkNotWithdrawing(crowdsale, token, funds);
-    });
-
-
     it("test crowdsale replacement", async function() {
         const role = getRoles();
 
         const [crowdsale, token, funds] = await instantiate();
 
-        await crowdsale.setTime(1505692810, {from: role.owner1});
+        await crowdsale.setTime(1508889600, {from: role.owner1});
         await crowdsale.sendTransaction({from: role.investor1, value: web3.toWei(20, 'finney')});
-        await crowdsale.sendTransaction({from: role.investor3, value: web3.toWei(100, 'finney')});
-
+        await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(100, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(120, 'finney'));
-        assert.equal(await token.balanceOf(role.investor1), STQ(2.5));
-        assert.equal(await token.balanceOf(role.investor3), STQ(12.5));
-        assert.equal(await token.totalSupply(), STQ(15));
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(2600));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(13000));
 
         // replace
-        const crowdsale2 = await STQCrowdsale.new([role.owner1, role.owner2, role.owner3], token.address, funds.address, {from: role.nobody});
-        await crowdsale2.setTime(1505692810, {from: role.owner1});
+        const crowdsale2 = await STQCrowdsale.new([role.owner1, role.owner2, role.owner3], token.address, funds.address,
+                role.owner1, {from: role.nobody});
+        await crowdsale2.setTime(1508889600, {from: role.owner1});
 
         await token.setController(crowdsale2.address, {from: role.owner1});
         await token.setController(crowdsale2.address, {from: role.owner2});
@@ -553,17 +485,17 @@ contract('STQCrowdsale', function(accounts) {
 
         // tokens and funds are intact
         await assertBalances(crowdsale2, token, funds, web3.toWei(120, 'finney'));
-        assert.equal(await token.balanceOf(role.investor1), STQ(2.5));
-        assert.equal(await token.balanceOf(role.investor3), STQ(12.5));
-        assert.equal(await token.totalSupply(), STQ(15));
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(2600));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(13000));
+        assertBigNumberEqual(await token.totalSupply(), STQ(15600));
 
         // crowdsale2 is functioning
-        await crowdsale2.sendTransaction({from: role.investor2, value: web3.toWei(40, 'finney')});
+        await crowdsale2.sendTransaction({from: role.investor3, value: web3.toWei(40, 'finney')});
         await assertBalances(crowdsale2, token, funds, web3.toWei(160, 'finney'));
-        assert.equal(await token.balanceOf(role.investor1), STQ(2.5));
-        assert.equal(await token.balanceOf(role.investor2), STQ(5));
-        assert.equal(await token.balanceOf(role.investor3), STQ(12.5));
-        assert.equal(await token.totalSupply(), STQ(20));
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(2600));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(13000));
+        assertBigNumberEqual(await token.balanceOf(role.investor3), STQ(5200));
+        assertBigNumberEqual(await token.totalSupply(), STQ(20800));
     });
 
 
@@ -572,13 +504,57 @@ contract('STQCrowdsale', function(accounts) {
 
         const [crowdsale, token, funds] = await instantiate();
 
-        await crowdsale.setTime(1505692810, {from: role.owner1});
+        await crowdsale.setTime(1508889600, {from: role.owner1});
 
         await crowdsale.sendTransaction({from: role.investor1, value: web3.toWei(395, 'finney')});
         await assertBalances(crowdsale, token, funds, web3.toWei(395, 'finney'));
 
         await crowdsale.sendTransaction({from: role.investor3, value: web3.toWei(100, 'finney')});
-        await assertBalances(crowdsale, token, funds, web3.toWei(400, 'finney'));
+        await assertBalances(crowdsale, token, funds, web3.toWei(398, 'finney'));   // 2 finney: pre-collected
         assert.equal(await crowdsale.m_state(), 4);
+    });
+
+
+    it("test circular buffer", async function() {
+        const role = getRoles();
+
+        let [crowdsale, token, funds] = await instantiate();
+
+        // +10%
+        await crowdsale.setTime(1511913599, {from: role.owner1});
+        await crowdsale.setLastMaxInvestments(1, {from: role.owner1});
+
+        await crowdsale.sendTransaction({from: role.investor1, value: web3.toWei(20, 'finney')});
+        await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(100, 'finney')});
+        await assertBalances(crowdsale, token, funds, web3.toWei(120, 'finney'));
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(2200));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(11000));
+
+        await crowdsale.setTime(1514246400, {from: role.owner1});
+        await crowdsale.checkTime({from: role.owner1});
+        await crowdsale.distributeBonuses(10, {from: role.nobody});
+
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(2200));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(13000));
+
+        // another test
+        [crowdsale, token, funds] = await instantiate();
+
+        // +0%
+        await crowdsale.setTime(1513728001, {from: role.owner1});
+        await crowdsale.setLastMaxInvestments(1, {from: role.owner1});
+
+        await crowdsale.sendTransaction({from: role.investor1, value: web3.toWei(20, 'finney')});
+        await crowdsale.sendTransaction({from: role.investor2, value: web3.toWei(100, 'finney')});
+        await assertBalances(crowdsale, token, funds, web3.toWei(120, 'finney'));
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(2000));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(10000));
+
+        await crowdsale.setTime(1514246400, {from: role.owner1});
+        await crowdsale.checkTime({from: role.owner1});
+        await crowdsale.distributeBonuses(10, {from: role.nobody});
+
+        assertBigNumberEqual(await token.balanceOf(role.investor1), STQ(2000));
+        assertBigNumberEqual(await token.balanceOf(role.investor2), STQ(13000));
     });
 });

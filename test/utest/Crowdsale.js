@@ -2,6 +2,8 @@
  *  Universal test: crowdsale.
  */
 
+// testrpc has to be run as testrpc -u 0 -u 1 -u 2 -u 3 -u 4 -u 5 -u 6
+
 'use strict';
 
 import expectThrow from '../helpers/expectThrow';
@@ -17,7 +19,8 @@ function getRoles(accounts) {
         investor1: accounts[2],
         investor2: accounts[3],
         investor3: accounts[4],
-        nobody: accounts[5]
+        deployer: accounts[5],
+        nobody: accounts[6]
     };
 }
 
@@ -40,6 +43,7 @@ export function crowdsaleUTest(accounts, instantiate, settings) {
         // rate: ,
         startTime: undefined,
         endTime: undefined,
+        // extra bonus for participation at the first seconds of the sale
         maxTimeBonus: 0,
 
         tokenTransfersDuringSale: false,
@@ -47,8 +51,15 @@ export function crowdsaleUTest(accounts, instantiate, settings) {
         firstPostICOTxFinishesSale: true,
         postICOTxThrows: true,
 
+        // percent ratio of extra tokens minted for founders, etc
+        // (extra tokens / all tokens including extra tokens) %
+        extraTokensPercent: 0,
+
         hasAnalytics: false,
-        analyticsPaymentBonus: 0
+        analyticsPaymentBonus: 0,
+
+        // called at times when crowdsale considered success
+        onSuccessfulSaleCallback: undefined
     };
 
     for (let k in defaultSettings)
@@ -244,9 +255,9 @@ export function crowdsaleUTest(accounts, instantiate, settings) {
             if (settings.startTime) {
                 // too early!
                 await crowdsale.setTime(settings.startTime - 86400*365*2, {from: role.owner1});
-                await expectThrow(pay(crowdsale, {from: role.investor1, value: web3.toWei(20, 'finney')}));
+                await expectThrow(pay(crowdsale, {from: role.investor3, value: web3.toWei(20, 'finney')}));
                 await crowdsale.setTime(settings.startTime - 1, {from: role.owner1});
-                await expectThrow(pay(crowdsale, {from: role.investor1, value: web3.toWei(20, 'finney')}));
+                await expectThrow(pay(crowdsale, {from: role.investor3, value: web3.toWei(20, 'finney')}));
             }
 
             // first investment at the first second
@@ -301,12 +312,17 @@ export function crowdsaleUTest(accounts, instantiate, settings) {
                 await assertTokenBalances(token, expectedTokenBalances);    // anyway, nothing gained
 
                 await checkNotInvesting(crowdsale, token, funds);
+
+                if (settings.onSuccessfulSaleCallback)
+                    await settings.onSuccessfulSaleCallback(role, crowdsale, token, funds);
                 if (usingFund)
                     await checkNotWithdrawing(funds);
             }
 
             const totalSupply = await token.totalSupply();
-            const totalSupplyExpected = Object.values(expectedTokenBalances).reduce((accumulator, currentValue) => accumulator.add(currentValue));
+            let totalSupplyExpected = Object.values(expectedTokenBalances).reduce((accumulator, currentValue) => accumulator.add(currentValue));
+            if (settings.extraTokensPercent)
+                totalSupplyExpected = totalSupplyExpected.mul(100).div(100 - settings.extraTokensPercent);
             assertBigNumberEqual(totalSupply, totalSupplyExpected);
 
             if (usingFund) {
@@ -347,6 +363,8 @@ export function crowdsaleUTest(accounts, instantiate, settings) {
             await assertTokenBalances(token, expectedTokenBalances);
 
             await checkNotInvesting(crowdsale, token, funds);
+            if (settings.onSuccessfulSaleCallback)
+                await settings.onSuccessfulSaleCallback(role, crowdsale, token, funds);
             if (usingFund)
                 await checkNotWithdrawing(funds);
         }]);
@@ -419,6 +437,9 @@ export function crowdsaleUTest(accounts, instantiate, settings) {
             await assertBalances(crowdsale, token, funds, cashInitial, web3.toWei(120, 'finney'));
             if (settings.softCap)
                 assert(web3.toBigNumber(web3.toWei(120, 'finney')).add(settings.preCollectedFunds).gt(settings.softCap));
+
+            if (settings.onSuccessfulSaleCallback)
+                await settings.onSuccessfulSaleCallback(role, crowdsale, token, funds);
 
             await checkNotInvesting(crowdsale, token, funds);
             await checkNotWithdrawing(funds);

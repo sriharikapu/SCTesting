@@ -3,6 +3,8 @@ pragma solidity 0.4.15;
 import './ownership/multiowned.sol';
 import './crowdsale/FixedTimeBonuses.sol';
 import './crowdsale/FundsRegistry.sol';
+import './crowdsale/InvestmentAnalytics.sol';
+import './security/ArgumentsChecker.sol';
 import './STQToken.sol';
 import 'zeppelin-solidity/contracts/ReentrancyGuard.sol';
 import 'zeppelin-solidity/contracts/math/Math.sol';
@@ -10,14 +12,21 @@ import 'zeppelin-solidity/contracts/math/SafeMath.sol';
 
 
 /// @title Storiqa ICO contract
-contract STQCrowdsale is multiowned, ReentrancyGuard {
+contract STQCrowdsale is ArgumentsChecker, ReentrancyGuard, multiowned, InvestmentAnalytics {
     using Math for uint256;
     using SafeMath for uint256;
     using FixedTimeBonuses for FixedTimeBonuses.Data;
 
-    uint internal constant MSK2UTC_DELTA = 3600 * 3;
+    enum IcoState { INIT, ICO, PAUSED, FAILED, DISTRIBUTING_BONUSES, SUCCEEDED }
 
-    enum IcoState { INIT, ICO, PAUSED, FAILED, SUCCEEDED }
+    /// @dev bookkeeping for last investment bonus
+    struct LastInvestment {
+        address investor;
+        uint payment;
+
+        // time-based bonus which was already received by the investor
+        uint timeBonus;
+    }
 
 
     event StateChanged(IcoState _state);
@@ -30,16 +39,18 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
     }
 
     /// @dev triggers some state changes based on current time
+    /// @param investor optional refund parameter
+    /// @param payment optional refund parameter
     /// note: function body could be skipped!
-    modifier timedStateChange() {
+    modifier timedStateChange(address investor, uint payment) {
         if (IcoState.INIT == m_state && getCurrentTime() >= getStartTime())
             changeState(IcoState.ICO);
 
-        if (IcoState.ICO == m_state && getCurrentTime() > getEndTime()) {
+        if (IcoState.ICO == m_state && getCurrentTime() >= getEndTime()) {
             finishICO();
 
-            if (msg.value > 0)
-                msg.sender.transfer(msg.value);
+            if (payment > 0)
+                investor.transfer(payment);
             // note that execution of further (but not preceding!) modifiers and functions ends here
         } else {
             _;
@@ -47,14 +58,14 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
     }
 
     /// @dev automatic check for unaccounted withdrawals
-    modifier fundsChecker() {
-        assert(m_state == IcoState.ICO);
-
+    /// @param investor optional refund parameter
+    /// @param payment optional refund parameter
+    modifier fundsChecker(address investor, uint payment) {
         uint atTheBeginning = m_funds.balance;
         if (atTheBeginning < m_lastFundsAmount) {
             changeState(IcoState.PAUSED);
-            if (msg.value > 0)
-                msg.sender.transfer(msg.value); // we cant throw (have to save state), so refunding this way
+            if (payment > 0)
+                investor.transfer(payment);     // we cant throw (have to save state), so refunding this way
             // note that execution of further (but not preceding!) modifiers and functions ends here
         } else {
             _;
@@ -70,23 +81,28 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
 
     // PUBLIC interface
 
-    function STQCrowdsale(address[] _owners, address _token, address _funds)
+    function STQCrowdsale(address[] _owners, address _token, address _funds, address _teamTokens)
         multiowned(_owners, 2)
+        validAddress(_token)
+        validAddress(_funds)
+        validAddress(_teamTokens)
     {
         require(3 == _owners.length);
-        require(address(0) != address(_token) && address(0) != address(_funds));
 
         m_token = STQToken(_token);
         m_funds = FundsRegistry(_funds);
+        m_teamTokens = _teamTokens;
 
-        m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: 1505681999 + MSK2UTC_DELTA, bonus: 50}));
-        m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: 1505768399 + MSK2UTC_DELTA, bonus: 25}));
-        m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: 1505941199 + MSK2UTC_DELTA, bonus: 20}));
-        m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: 1506200399 + MSK2UTC_DELTA, bonus: 15}));
-        m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: 1506545999 + MSK2UTC_DELTA, bonus: 10}));
-        m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: 1506891599 + MSK2UTC_DELTA, bonus: 5}));
-        m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: 1508360399 + MSK2UTC_DELTA, bonus: 0}));
+        m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: c_startTime + (1 weeks), bonus: 30}));
+        m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: c_startTime + (2 weeks), bonus: 25}));
+        m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: c_startTime + (3 weeks), bonus: 20}));
+        m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: c_startTime + (4 weeks), bonus: 15}));
+        m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: c_startTime + (5 weeks), bonus: 10}));
+        m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: c_startTime + (8 weeks), bonus: 5}));
+        m_bonuses.bonuses.push(FixedTimeBonuses.Bonus({endTime: 1514246400, bonus: 0}));
         m_bonuses.validate(true);
+
+        deployer = msg.sender;
     }
 
 
@@ -94,44 +110,47 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
 
     // fallback function as a shortcut
     function() payable {
+        require(0 == msg.data.length);
         buy();  // only internal call here!
     }
 
     /// @notice ICO participation
-    /// @return number of STQ tokens bought (with all decimal symbols)
-    function buy()
-        public
-        payable
+    function buy() public payable {     // dont mark as external!
+        iaOnInvested(msg.sender, msg.value, false);
+    }
+
+    function iaOnInvested(address investor, uint payment, bool usingPaymentChannel)
+        internal
         nonReentrant
-        timedStateChange
-        requiresState(IcoState.ICO)
-        fundsChecker
-        returns (uint)
+        timedStateChange(investor, payment)
+        fundsChecker(investor, payment)
     {
-        address investor = msg.sender;
-        uint256 payment = msg.value;
+        require(m_state == IcoState.ICO || m_state == IcoState.INIT && isOwner(investor) /* for final test */);
+
         require(payment >= c_MinInvestment);
 
         uint startingInvariant = this.balance.add(m_funds.balance);
 
         // checking for max cap
-        uint fundsAllowed = getMaximumFunds().sub(m_funds.totalInvested());
+        uint fundsAllowed = getMaximumFunds().sub(getTotalInvested());
         assert(0 != fundsAllowed);  // in this case state must not be IcoState.ICO
         payment = fundsAllowed.min256(payment);
         uint256 change = msg.value.sub(payment);
 
         // issue tokens
-        uint stq = calcSTQAmount(payment);
+        var (stq, timeBonus) = calcSTQAmount(payment, usingPaymentChannel ? c_paymentChannelBonusPercent : 0);
         m_token.mint(investor, stq);
 
         // record payment
         m_funds.invested.value(payment)(investor);
         FundTransfer(investor, payment, true);
 
+        recordInvestment(investor, payment, timeBonus);
+
         // check if ICO must be closed early
         if (change > 0)
         {
-            assert(getMaximumFunds() == m_funds.totalInvested());
+            assert(getMaximumFunds() == getTotalInvested());
             finishICO();
 
             // send change
@@ -140,8 +159,6 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
         }
         else
             assert(startingInvariant == this.balance.add(m_funds.balance));
-
-        return stq;
     }
 
 
@@ -150,7 +167,7 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
     /// @notice pauses ICO
     function pause()
         external
-        timedStateChange
+        timedStateChange(address(0), 0)
         requiresState(IcoState.ICO)
         onlyowner
     {
@@ -160,7 +177,7 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
     /// @notice resume paused ICO
     function unpause()
         external
-        timedStateChange
+        timedStateChange(address(0), 0)
         requiresState(IcoState.PAUSED)
         onlymanyowners(sha3(msg.data))
     {
@@ -171,7 +188,7 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
     /// @notice consider paused ICO as failed
     function fail()
         external
-        timedStateChange
+        timedStateChange(address(0), 0)
         requiresState(IcoState.PAUSED)
         onlymanyowners(sha3(msg.data))
     {
@@ -181,41 +198,75 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
     /// @notice In case we need to attach to existent token
     function setToken(address _token)
         external
-        timedStateChange
+        validAddress(_token)
+        timedStateChange(address(0), 0)
         requiresState(IcoState.PAUSED)
         onlymanyowners(sha3(msg.data))
     {
-        require(address(0) != _token);
         m_token = STQToken(_token);
     }
 
     /// @notice In case we need to attach to existent funds
     function setFundsRegistry(address _funds)
         external
-        timedStateChange
+        validAddress(_funds)
+        timedStateChange(address(0), 0)
         requiresState(IcoState.PAUSED)
         onlymanyowners(sha3(msg.data))
     {
-        require(address(0) != _funds);
         m_funds = FundsRegistry(_funds);
     }
 
     /// @notice explicit trigger for timed state changes
     function checkTime()
         public
-        timedStateChange
+        timedStateChange(address(0), 0)
         onlyowner
     {
+    }
+
+    /// @notice computing and distributing post-ICO bonuses
+    function distributeBonuses(uint investorsLimit)
+        external
+        timedStateChange(address(0), 0)
+        requiresState(IcoState.DISTRIBUTING_BONUSES)
+    {
+        uint limitIndex = uint(m_lastInvestments.length).min256(m_nextUndestributedBonusIndex + investorsLimit);
+        uint iterations = 0;
+        uint startingGas = msg.gas;
+        while (m_nextUndestributedBonusIndex < limitIndex) {
+            if (c_lastInvestmentsBonus > m_lastInvestments[m_nextUndestributedBonusIndex].timeBonus) {
+                uint bonus = c_lastInvestmentsBonus.sub(m_lastInvestments[m_nextUndestributedBonusIndex].timeBonus);
+                uint bonusSTQ = m_lastInvestments[m_nextUndestributedBonusIndex].payment.mul(c_STQperETH).mul(bonus).div(100);
+
+                m_token.mint(m_lastInvestments[m_nextUndestributedBonusIndex].investor, bonusSTQ);
+            }
+            m_nextUndestributedBonusIndex++;
+
+            // preventing gas limit hit
+            uint avgGasPerIteration = startingGas.sub(msg.gas).div(++iterations);
+            if (msg.gas < avgGasPerIteration * 3)
+                break;
+        }
+
+        if (m_nextUndestributedBonusIndex == m_lastInvestments.length)
+            changeState(IcoState.SUCCEEDED);
+    }
+
+
+    function createMorePaymentChannels(uint limit) external returns (uint) {
+        require(isOwner(msg.sender) || msg.sender == deployer);
+        return createMorePaymentChannelsInternal(limit);
     }
 
 
     // INTERNAL functions
 
     function finishICO() private {
-        if (m_funds.totalInvested() < getMinFunds())
+        if (getTotalInvested() < getMinFunds())
             changeState(IcoState.FAILED);
         else
-            changeState(IcoState.SUCCEEDED);
+            changeState(IcoState.DISTRIBUTING_BONUSES);
     }
 
     /// @dev performs only allowed state transitions
@@ -223,8 +274,9 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
         assert(m_state != _newState);
 
         if (IcoState.INIT == m_state) {        assert(IcoState.ICO == _newState); }
-        else if (IcoState.ICO == m_state) {    assert(IcoState.PAUSED == _newState || IcoState.FAILED == _newState || IcoState.SUCCEEDED == _newState); }
+        else if (IcoState.ICO == m_state) {    assert(IcoState.PAUSED == _newState || IcoState.FAILED == _newState || IcoState.DISTRIBUTING_BONUSES == _newState); }
         else if (IcoState.PAUSED == m_state) { assert(IcoState.ICO == _newState || IcoState.FAILED == _newState); }
+        else if (IcoState.DISTRIBUTING_BONUSES == m_state) { assert(IcoState.SUCCEEDED == _newState); }
         else assert(false);
 
         m_state = _newState;
@@ -240,9 +292,8 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
 
     function onSuccess() private {
         // mint tokens for owners
-        uint tokensPerOwner = m_token.totalSupply().mul(4).div(m_numOwners);
-        for (uint i = 0; i < m_numOwners; i++)
-            m_token.mint(getOwner(i), tokensPerOwner);
+        uint tokensForTeam = m_token.totalSupply().mul(40).div(60);
+        m_token.mint(m_teamTokens, tokensForTeam);
 
         m_funds.changeState(FundsRegistry.State.SUCCEEDED);
         m_funds.detachController();
@@ -258,15 +309,44 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
     }
 
 
+    function getLargePaymentBonus(uint payment) private constant returns (uint) {
+        if (payment > 5000 ether) return 20;
+        if (payment > 3000 ether) return 15;
+        if (payment > 1000 ether) return 10;
+        if (payment > 800 ether) return 8;
+        if (payment > 500 ether) return 5;
+        if (payment > 200 ether) return 2;
+        return 0;
+    }
+
     /// @dev calculates amount of STQ to which payer of _wei is entitled
-    function calcSTQAmount(uint _wei) private constant returns (uint) {
-        uint stq = _wei.mul(c_STQperETH);
+    function calcSTQAmount(uint _wei, uint extraBonus) private constant returns (uint stq, uint timeBonus) {
+        timeBonus = m_bonuses.getBonus(getCurrentTime());
+        uint bonus = extraBonus.add(timeBonus).add(getLargePaymentBonus(_wei));
 
         // apply bonus
-        stq = stq.mul(m_bonuses.getBonus(getCurrentTime()).add(100)).div(100);
-
-        return stq;
+        stq = _wei.mul(c_STQperETH).mul(bonus.add(100)).div(100);
     }
+
+    /// @dev records investments in a circular buffer
+    function recordInvestment(address investor, uint payment, uint timeBonus) private {
+        uint writeTo;
+        assert(m_lastInvestments.length <= getLastMaxInvestments());
+        if (m_lastInvestments.length < getLastMaxInvestments()) {
+            // buffer is still expanding
+            writeTo = m_lastInvestments.length++;
+        }
+        else {
+            // reusing buffer
+            writeTo = m_nextFreeLastInvestmentIndex++;
+            if (m_nextFreeLastInvestmentIndex == m_lastInvestments.length)
+                m_nextFreeLastInvestmentIndex = 0;
+        }
+
+        assert(writeTo < m_lastInvestments.length);
+        m_lastInvestments[writeTo] = LastInvestment(investor, payment, timeBonus);
+    }
+
 
     /// @dev start time of the ICO, inclusive
     function getStartTime() private constant returns (uint) {
@@ -293,6 +373,16 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
         return c_MaximumFunds;
     }
 
+    /// @dev amount of investments during all crowdsales
+    function getTotalInvested() internal constant returns (uint) {
+        return m_funds.totalInvested().add(4281 ether /* FIXME update me */);
+    }
+
+    /// @dev to be overridden in tests
+    function getLastMaxInvestments() internal constant returns (uint) {
+        return c_maxLastInvestments;
+    }
+
 
     // FIELDS
 
@@ -303,22 +393,41 @@ contract STQCrowdsale is multiowned, ReentrancyGuard {
     uint public constant c_MinInvestment = 10 finney;
 
     /// @notice minimum investments to consider ICO as a success
-    uint public constant c_MinFunds = 5000 ether;
+    uint public constant c_MinFunds = 30000 ether;
 
     /// @notice maximum investments to be accepted during ICO
-    uint public constant c_MaximumFunds = 500000 ether;
+    uint public constant c_MaximumFunds = 90000 ether;
 
     /// @notice start time of the ICO
-    uint public constant c_startTime = 1505541600;
+    uint public constant c_startTime = 1508889600;
+
+    /// @notice authorised payment bonus
+    uint public constant c_paymentChannelBonusPercent = 2;
 
     /// @notice timed bonuses
     FixedTimeBonuses.Data m_bonuses;
+
+    uint public constant c_maxLastInvestments = 100;
+
+    uint public constant c_lastInvestmentsBonus = 30;
+
+    /// @dev bookkeeping for last investment bonus
+    LastInvestment[] public m_lastInvestments;
+
+    uint m_nextFreeLastInvestmentIndex;
+
+    uint m_nextUndestributedBonusIndex;
+
 
     /// @dev state of the ICO
     IcoState public m_state = IcoState.INIT;
 
     /// @dev contract responsible for token accounting
     STQToken public m_token;
+
+    address public m_teamTokens;
+
+    address public deployer;
 
     /// @dev contract responsible for investments accounting
     FundsRegistry public m_funds;

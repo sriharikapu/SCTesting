@@ -6,8 +6,8 @@ import '../STQCrowdsale.sol';
 /// @title Test helper for STQCrowdsale, DONT use it in production!
 contract STQCrowdsaleTestHelper is STQCrowdsale {
 
-    function STQCrowdsaleTestHelper(address[] _owners, address _token, address _funds)
-        STQCrowdsale(_owners, _token, _funds)
+    function STQCrowdsaleTestHelper(address[] _owners, address _token, address _funds, address _teamTokens)
+        STQCrowdsale(_owners, _token, _funds, _teamTokens)
     {
     }
 
@@ -29,6 +29,20 @@ contract STQCrowdsaleTestHelper is STQCrowdsale {
         return 400 finney;
     }
 
+    function getTotalInvested() internal constant returns (uint) {
+        return m_funds.totalInvested().add(2 finney);
+    }
+
+
+    function getLastMaxInvestments() internal constant returns (uint) {
+        return m_maxLastInvestments;
+    }
+
+    function setLastMaxInvestments(uint value) external onlyowner {
+        m_maxLastInvestments = value;
+    }
+
 
     uint m_time;
+    uint m_maxLastInvestments = c_maxLastInvestments;
 }

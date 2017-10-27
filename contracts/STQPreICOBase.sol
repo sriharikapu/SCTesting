@@ -44,10 +44,12 @@ contract STQPreICOBase is SimpleCrowdsaleBase, Ownable, InvestmentAnalytics {
     }
 
     function getLargePaymentBonus(uint payment) private constant returns (uint) {
-        if (payment > 1000 ether) return 10;
-        if (payment > 800 ether) return 8;
-        if (payment > 500 ether) return 5;
-        if (payment > 200 ether) return 2;
+        if (payment >= 5000 ether) return 20;
+        if (payment >= 3000 ether) return 15;
+        if (payment >= 1000 ether) return 10;
+        if (payment >= 800 ether) return 8;
+        if (payment >= 500 ether) return 5;
+        if (payment >= 200 ether) return 2;
         return 0;
     }
 
